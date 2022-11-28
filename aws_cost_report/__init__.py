@@ -29,8 +29,23 @@ class GoogleSheetsOutput(ReportOutput):
     pass
 
 class TSVReportOutput(ReportOutput):
+    def __init__(self):
+        session = boto3.session.Session()
+        self.org = session.client('organizations', 'us-east-1')
+        self.linked_account_mapping = {}
+
+
     def start(self):
         print('\t'.join(['TimePeriod', 'Service', 'Amount']))
+
+    def get_account_name(self, id):
+        if id not in self.linked_account_mapping.keys():
+            try:
+                account = self.org.describe_account(AccountId=id)
+                self.linked_account_mapping[id] = account['Account']['Name']
+            except:
+                return ''
+        return self.linked_account_mapping[id]
 
     def add(self, result_by_time):
         current_account = None
@@ -40,7 +55,7 @@ class TSVReportOutput(ReportOutput):
             if current_account != account:
                 current_account = account
                 print('')
-                print(account)
+                print(account, '\t', self.get_account_name(account))
 
             amount = group['Metrics']['UnblendedCost']['Amount']
             unit = group['Metrics']['UnblendedCost']['Unit']
@@ -71,6 +86,7 @@ def get_cost_explorer_data(start, end, grainularity, **kwargs):
     # create a session for cost explorer. 
     session = boto3.session.Session()
     cd = session.client('ce', 'us-east-1')
+    org = session.client('organizations', 'us-east-1')
 
     token = None
     while True:
@@ -87,6 +103,7 @@ def get_cost_explorer_data(start, end, grainularity, **kwargs):
                                      **kwargs)
         
         for result in data['ResultsByTime']:
+
             yield result
 
         token = data.get('NextPageToken')
